@@ -1,0 +1,27 @@
+#pip install requirements.txt
+
+streamlit
+Pillow
+numpy
+albumentations
+fpdf
+streamlit_drawable_canvas
+streamlit-image-comparison
+watchdog
+pandas
+matplotlib
+seaborn
+plotly
+altair
+loguru
+python-dateutil
+pylatexenc
+scipy
+regex
+pylatexenc
+tqdm
+dask
+vaex
+orjson
+
+
