@@ -20,5 +20,4 @@ scipy
 regex
 tqdm
 dask==2023.10.0
-vaex==4.17.0
 orjson
