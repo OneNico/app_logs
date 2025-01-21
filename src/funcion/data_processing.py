@@ -1,39 +1,52 @@
-import vaex
+# src/funcion/data_processing.py
+
+import pandas as pd
 import orjson  # Parser JSON más rápido
 import io
 
 # Definición de los tipos de datos para las columnas
 COL_DTYPES = {
+    # -------------------------------------------------------------------------
+    # Columna de Fecha/Hora principal (la que parseamos manualmente al leer)
     "Datetime": "datetime64[ns]",
-    "source.Redundancy Group": "int64",
-    "source.App Type Id": "int64",
-    "source.Server Id": "int64",
-    "source.Repeater Id": "int64",
-    "source.Device Site Id": "int64",
-    "source.Repeater Slots": "string",
-    "descriptor.Protocol": "int64",
-    "descriptor.Opcode": "string",
-    "descriptor.Source Unique Id": "int64",
-    "descriptor.Destination Unique Id": "int64",
-    "descriptor.Sequence Number": "int64",
-    "descriptor.Timestamp": "int64",
-    "descriptor.Fragment": "int64",
-    "descriptor.Version": "int64",
+
+    # -------------------------------------------------------------------------
+    # source.*
+    "source.Redundancy Group": "Int64",
+    "source.App Type Id": "Int64",
+    "source.Server Id": "Int64",
+    "source.Repeater Id": "Int64",
+    "source.Device Site Id": "Int64",
+    "source.Repeater Slots": "string",  # "first_channel", "second_channel" etc.
+
+    # -------------------------------------------------------------------------
+    # descriptor.*
+    "descriptor.Protocol": "Int64",      # aparece como 0
+    "descriptor.Opcode": "string",       # "ATIACallStatusPdu", etc.
+    "descriptor.Source Unique Id": "Int64",
+    "descriptor.Destination Unique Id": "Int64",
+    "descriptor.Sequence Number": "Int64",
+    "descriptor.Timestamp": "Int64",     # o "float64". Si quisieras fecha, tendrías que convertir
+    "descriptor.Fragment": "Int64",
+    "descriptor.Version": "Int64",
     "descriptor.Role Info": "string",
-    "payload.Timestamp": "int64",
-    "payload.Csn": "int64",
-    "payload.Src": "int64",
-    "payload.Tgt": "int64",
-    "payload.Site all call site id": "int64",
+
+    # -------------------------------------------------------------------------
+    # payload.*
+    "payload.Timestamp": "Int64",  # igual que descriptor.Timestamp
+    "payload.Csn": "Int64",
+    "payload.Src": "Int64",
+    "payload.Tgt": "Int64",
+    "payload.Site all call site id": "Int64",
     "payload.CallType": "string",
     "payload.Action": "string",
     "payload.Info": "string",
-    "payload.Value": "int64",
-    "payload.Originating Site Id": "int64",
-    "payload.RSSI": "string",
-    "payload.Participating sites": "string",
-    "payload.Logical Channel Number": "int64",
-    "payload.Talkgroup Subscription List": "string",
+    "payload.Value": "Int64",
+    "payload.Originating Site Id": "Int64",
+    "payload.RSSI": "string",  # incluye " dbm", "Not available", etc.
+    "payload.Participating sites": "object",  # lista/dict
+    "payload.Logical Channel Number": "Int64",
+    "payload.Talkgroup Subscription List": "object",  # lista/dict
     "payload.Radio Type": "string",
     "payload.Phone Info": "string",
     "payload.Preempt Priority": "string",
@@ -54,38 +67,49 @@ def procesar_archivo(archivo):
     """
     registros = []
     try:
+        # Resetear el buffer al inicio
         archivo.seek(0)
+        # Envolver el archivo con TextIOWrapper para leer como texto
         text_stream = io.TextIOWrapper(archivo, encoding="utf-8")
 
         while True:
             fecha_hora = text_stream.readline()
             if not fecha_hora:
-                break
+                break  # Fin del archivo
             json_str = text_stream.readline()
             if not json_str:
+                # Posible final del archivo sin JSON
                 break
 
             try:
+                # Parsear el JSON usando orjson para mayor velocidad
                 registro = orjson.loads(json_str)
-                registro['Datetime'] = fecha_hora.strip()
+                # Agregar la fecha y hora al registro
+                registro['Datetime'] = pd.to_datetime(
+                    fecha_hora.strip(),
+                    format="%d-%m-%Y %H:%M:%S",
+                    errors='coerce'
+                )
                 registros.append(registro)
             except orjson.JSONDecodeError:
+                # Si hay un error al parsear, simplemente omite este registro
                 continue
 
-    except Exception:
+    except Exception as e:
+        # Si ocurre un error al leer el archivo, retorna una lista vacía
         return []
 
     return registros
 
 def cargar_logs(archivos):
     """
-    Carga múltiples archivos .log y los concatena en un único DataFrame de manera eficiente utilizando Vaex.
+    Carga múltiples archivos .log y los concatena en un único DataFrame de manera eficiente.
 
     Args:
         archivos (list): Lista de objetos de archivos subidos por el usuario.
 
     Returns:
-        vaex.DataFrame: DataFrame combinado con todos los datos cargados.
+        pd.DataFrame: DataFrame combinado con todos los datos cargados.
     """
     datos = []
 
@@ -96,21 +120,13 @@ def cargar_logs(archivos):
     if datos:
         try:
             # Normalizar los datos anidados en JSON
-            df_pandas = pd.json_normalize(datos)
-            
-            # Convertir a un DataFrame de Vaex
-            df_vaex = vaex.from_pandas(df_pandas, copy_index=False)
-
-            # Aplicar tipos de datos definidos
-            for col, dtype in COL_DTYPES.items():
-                if col in df_vaex.columns:
-                    try:
-                        df_vaex[col] = df_vaex[col].astype(dtype)
-                    except Exception:
-                        continue
-
-            return df_vaex
-        except Exception:
-            return vaex.from_arrays()  # Retorna un DataFrame Vaex vacío
+            df = pd.json_normalize(datos)
+            # Aplicar los tipos de datos definidos en COL_DTYPES
+            df = df.astype(COL_DTYPES, errors='ignore')  # errors='ignore' para evitar errores en columnas no presentes
+            return df
+        except Exception as e:
+            # En caso de error al normalizar, retorna un DataFrame vacío
+            return pd.DataFrame()
     else:
-        return vaex.from_arrays()  # Retorna un DataFrame Vaex vacío
+        # Si no hay datos, retorna un DataFrame vacío
+        return pd.DataFrame()
