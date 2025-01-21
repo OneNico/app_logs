@@ -1,5 +1,3 @@
-#pip install requirements.txt
-
 streamlit
 Pillow
 numpy
@@ -18,10 +16,7 @@ python-dateutil
 pylatexenc
 scipy
 regex
-pylatexenc
 tqdm
 dask
 vaex
 orjson
-
-
